@@ -9,11 +9,7 @@
 
 #include "TopLJets2015/TopAnalysis/interface/MiniEvent.h"
 #include "TopLJets2015/TopAnalysis/interface/TOP-16-006.h"
-#include "TopLJets2015/TopAnalysis/interface/BtagUncertaintyComputer.h"
-
-#include "CondFormats/BTauObjects/interface/BTagCalibration.h"
-#include "CondFormats/BTauObjects/interface/BTagCalibrationReader.h"
-
+#include "TopLJets2015/TopAnalysis/interface/CorrectionTools.h"
 
 #include <vector>
 #include <iostream>
@@ -30,9 +26,10 @@ void RunTop16006(TString filename,
 		 TString outname,
 		 Int_t channelSelection, 
 		 Int_t chargeSelection, 
-		 FlavourSplitting flavourSplitting,
+		 SelectionTool::FlavourSplitting flavourSplitting,
 		 TH1F *normH, 
-		 Bool_t runSysts)
+		 Bool_t runSysts,
+		 TString era)
 {
 
   bool isTTbar( filename.Contains("_TTJets") );
@@ -61,7 +58,8 @@ void RunTop16006(TString filename,
   std::vector<TGraph *>puWgtGr;
   if(!ev.isData)
     {
-      TString puWgtUrl("${CMSSW_BASE}/src/TopLJets2015/TopAnalysis/data/pileupWgts.root");
+//      TString puWgtUrl(era+"/pileupWgts.root"); 
+      TString puWgtUrl("data/era2016/pileupWgts.root"); 
       gSystem->ExpandPathName(puWgtUrl);
       TFile *fIn=TFile::Open(puWgtUrl);
       for(size_t i=0; i<3; i++)
@@ -86,7 +84,7 @@ void RunTop16006(TString filename,
 	  tmp->Delete();
 	}
       
-      /*
+      
 	if(fIn)
 	{
 	puWgtGr.push_back( (TGraph *)fIn->Get("puwgts_nom") );
@@ -94,11 +92,11 @@ void RunTop16006(TString filename,
 	puWgtGr.push_back( (TGraph *)fIn->Get("puwgts_up") );
 	fIn->Close();
 	}
-      */
+      
     }
-
+/*
   //LEPTON EFFICIENCIES
-  TString lepEffUrl("${CMSSW_BASE}/src/TopLJets2015/TopAnalysis/data/leptonEfficiencies.root");
+  TString lepEffUrl(era+"/muonEfficiencies.root"); 
   gSystem->ExpandPathName(lepEffUrl);
   std::map<TString,TH2 *> lepEffH;
   if(!ev.isData)
@@ -110,7 +108,7 @@ void RunTop16006(TString filename,
       fIn->Close();
     }
 
-  lepEffUrl="${CMSSW_BASE}/src/TopLJets2015/TopAnalysis/data/CutBasedID_TightWP_76X_18Feb.txt_SF2D.root";
+  lepEffUrl=era+"/electronEfficiencies.root";
   gSystem->ExpandPathName(lepEffUrl);
   if(!ev.isData)
     {
@@ -121,47 +119,21 @@ void RunTop16006(TString filename,
     }
 
   //B-TAG CALIBRATION
-  TString btagUncUrl("${CMSSW_BASE}/src/TopLJets2015/TopAnalysis/data/CSVv2.csv");
-  gSystem->ExpandPathName(btagUncUrl);
-  std::vector<BTagCalibrationReader *> sfbReaders, sflReaders;
-  TString btagEffExpUrl("${CMSSW_BASE}/src/TopLJets2015/TopAnalysis/data/expTageff.root");
-  gSystem->ExpandPathName(btagEffExpUrl);
-  std::map<TString, TGraphAsymmErrors *> expBtagEff, expBtagEffPy8;
-  BTagSFUtil myBTagSFUtil;
-  if(!ev.isData)
+  std::map<BTagEntry::JetFlavor, BTagCalibrationReader *> btvsfReaders  = getBTVcalibrationReaders(era,BTagEntry::OP_MEDIUM);
+  std::map<BTagEntry::JetFlavor, TGraphAsymmErrors *>    expBtagEffPy8 = readExpectedBtagEff(era);
+  TString btagExpPostFix("");
+  if(isTTbar)
     {
-      BTagCalibration btvcalib("csvv2", btagUncUrl.Data());
-      sfbReaders.push_back( new BTagCalibrationReader(&btvcalib, BTagEntry::OP_MEDIUM, "mujets", "central") );
-      sfbReaders.push_back( new BTagCalibrationReader(&btvcalib, BTagEntry::OP_MEDIUM, "mujets", "down") ); 
-      sfbReaders.push_back( new BTagCalibrationReader(&btvcalib, BTagEntry::OP_MEDIUM, "mujets", "up") );
-
-      sflReaders.push_back( new BTagCalibrationReader(&btvcalib, BTagEntry::OP_MEDIUM, "incl", "central") );
-      sflReaders.push_back( new BTagCalibrationReader(&btvcalib, BTagEntry::OP_MEDIUM, "incl", "down") ); 
-      sflReaders.push_back( new BTagCalibrationReader(&btvcalib, BTagEntry::OP_MEDIUM, "incl", "up") );
-      
-      TFile *beffIn=TFile::Open(btagEffExpUrl);
-      expBtagEffPy8["b"]=(TGraphAsymmErrors *)beffIn->Get("b");
-      expBtagEffPy8["c"]=(TGraphAsymmErrors *)beffIn->Get("c");
-      expBtagEffPy8["udsg"]=(TGraphAsymmErrors *)beffIn->Get("udsg");
-      beffIn->Close();
-      
-      TString btagExpPostFix("");
-      if(isTTbar)
-	{
-	  if(filename.Contains("_herwig")) btagExpPostFix="_herwig";
-	  if(filename.Contains("_scaleup")) btagExpPostFix="_scaleup";
-	  if(filename.Contains("_scaledown")) btagExpPostFix="_scaledown";
-	}
-      btagEffExpUrl.ReplaceAll(".root",btagExpPostFix+".root");
-      beffIn=TFile::Open(btagEffExpUrl);
-      expBtagEff["b"]=(TGraphAsymmErrors *)beffIn->Get("b");
-      expBtagEff["c"]=(TGraphAsymmErrors *)beffIn->Get("c");
-      expBtagEff["udsg"]=(TGraphAsymmErrors *)beffIn->Get("udsg");
-      beffIn->Close();
+      if(filename.Contains("_herwig")) btagExpPostFix="_herwig";
+      if(filename.Contains("_scaleup")) btagExpPostFix="_scaleup";
+      if(filename.Contains("_scaledown")) btagExpPostFix="_scaledown";
     }
+  std::map<BTagEntry::JetFlavor, TGraphAsymmErrors *> expBtagEff=readExpectedBtagEff(era,btagExpPostFix);
+  BTagSFUtil myBTagSFUtil;
+
 
   //JET ENERGY SCALE: https://twiki.cern.ch/twiki/bin/view/CMS/JECUncertaintySources#Summer15_uncertainties
-  TString jecUncUrl("${CMSSW_BASE}/src/TopLJets2015/TopAnalysis/data/Fall15_25nsV2_DATA_UncertaintySources_AK4PFchs.txt");
+  TString jecUncUrl(era+"/jecUncertaintySources_AK4PFchs.txt");
   gSystem->ExpandPathName(jecUncUrl);
   //FactorizedJetCorrector *jetCorr=getFactorizedJetEnergyCorrector("${CMSSW_BASE}/src/TopLJets2015/TopAnalysis/data/jectxt",!ev.isData);
   std::vector<TString> jecUncSrcs;
@@ -203,11 +175,11 @@ void RunTop16006(TString filename,
 	  jecUncs.push_back( new JetCorrectionUncertainty(*p) );
 	}
     }
-
+*/
   //LIST OF SYSTEMATICS
   Int_t nGenSysts(0);
   std::vector<TString> expSysts;
-  if(runSysts)
+/*  if(runSysts)
     {
       if(normH)
 	for(Int_t xbin=1; xbin<=normH->GetNbinsX(); xbin++) 
@@ -231,7 +203,7 @@ void RunTop16006(TString filename,
       cout << "\t..." << nGenSysts << "/" << expSysts.size() << " generator level/experimental systematics will be considered" << endl;
     }
 
-
+*/
   //BOOK HISTOGRAMS
   std::map<TString, TH1 *> allPlots;
   std::map<TString, TH2 *> all2dPlots;
@@ -332,7 +304,7 @@ void RunTop16006(TString filename,
     }
 
   for (auto& it : allPlots)   { it.second->Sumw2(); it.second->SetDirectory(0); }
-  for (auto& it : all2dPlots) { it.second->Sumw2(); it.second->SetDirectory(0); }
+//  for (auto& it : all2dPlots) { it.second->Sumw2(); it.second->SetDirectory(0); }
 
   //LOOP OVER EVENTS
   for (Int_t iev=0;iev<nentries;iev++)
@@ -393,12 +365,13 @@ void RunTop16006(TString filename,
       //apply trigger requirement
       if(ev.l_id[lepIdx]==13)
 	{
-	  if(ev.isData  && (ev.muTrigger & 0x3)==0) continue;
-	  if(!ev.isData && (ev.muTrigger & 0x3)==0) continue;
+	  if(ev.isData  && (ev.triggerBits & 0x3)==0) continue;
+	  //if(!ev.isData && (ev.muTrigger & 0x3)==0) continue;
 	}
       if(ev.l_id[lepIdx]==11)
 	{ 
-	  if( ((ev.elTrigger>>0)&0x1)==0 ) continue;
+	  if(ev.isData && ((ev.triggerBits>>0)&0x1)==0 ) continue;
+	  //if(!ev.isData && ((ev.elTrigger>>0)&0x1)==0 ) continue;
 	}
 
       //select according to the lepton id/charge
@@ -434,14 +407,14 @@ void RunTop16006(TString filename,
 	  //cross clean with respect to leptons 
 	  if(jp4.DeltaR(lp4)<0.5) continue;
 	  if(isZ && jp4.DeltaR(l2p4)<0.5)continue;
-
+/*
 	  //smear jet energy resolution for MC
 	  //jetDiff -= jp4;
 	  float genJet_pt(0);
 	  if(ev.j_g[k]>-1) genJet_pt=ev.g_pt[ ev.j_g[k] ];
 	  if(!ev.isData && genJet_pt>0) 
 	    {
-	      float jerSmear=getJetResolutionScales(jp4.Pt(),jp4.Pt(),genJet_pt)[0];
+	      float jerSmear=getJetResolutionScales(jp4.Pt(),jp4.Eta(),genJet_pt)[0];
 	      jp4 *= jerSmear;
 	    }
 	  //jetDiff += jp4;
@@ -450,7 +423,7 @@ void RunTop16006(TString filename,
 
 	  //require back-to-back configuration with Z
 	  if(isZ && jp4.DeltaPhi(dilp4)<2.7) continue;
-
+*/
 	  // re-inforce kinematics cuts
 	  if(jp4.Pt()<30) continue;
 	  if(fabs(jp4.Eta()) > 2.4) continue;
@@ -462,52 +435,39 @@ void RunTop16006(TString filename,
 	  //b-tag
 	  float csv = ev.j_csv[k];	  
 	  bool isBTagged(csv>0.800);
-	  if(!ev.isData)
+/*	  if(!ev.isData)
 	    {
 	      float jptForBtag(jp4.Pt()>1000. ? 999. : jp4.Pt()), jetaForBtag(fabs(jp4.Eta()));
 	      float expEff(1.0), jetBtagSF(1.0);
-	      if(abs(ev.j_hadflav[k])==4) 
-		{ 
-		  ncjets++;
-		  expEff    = expBtagEff["c"]->Eval(jptForBtag); 
-		  jetBtagSF = sfbReaders[0]->eval( BTagEntry::FLAV_C, jetaForBtag, jptForBtag);
-		  jetBtagSF *= expEff>0 ? expBtagEffPy8["c"]->Eval(jptForBtag)/expBtagEff["c"]->Eval(jptForBtag) : 0.;
-		}
-	      else if(abs(ev.j_hadflav[k])==5) 
-		{ 
-		  nbjets++;
-		  expEff    = expBtagEff["b"]->Eval(jptForBtag); 
-		  jetBtagSF = sfbReaders[0]->eval( BTagEntry::FLAV_B, jetaForBtag, jptForBtag);
-		  jetBtagSF *= expEff>0 ? expBtagEffPy8["b"]->Eval(jptForBtag)/expBtagEff["b"]->Eval(jptForBtag) : 0.;
-		}
-	      else
-		{
-		  nljets++;
-		  expEff    = expBtagEff["udsg"]->Eval(jptForBtag);
-                  jetBtagSF = sflReaders[0]->eval( BTagEntry::FLAV_UDSG, jetaForBtag, jptForBtag);
-		  jetBtagSF *= expEff> 0 ? expBtagEffPy8["udsg"]->Eval(jptForBtag)/expBtagEff["udsg"]->Eval(jptForBtag) : 0.;
-		}
+	      BTagEntry::JetFlavor hadFlav=BTagEntry::FLAV_UDSG;
+	      if(abs(ev.j_hadflav[k])==4) { hadFlav=BTagEntry::FLAV_C; ncjets++; }
+	      else if(abs(ev.j_hadflav[k])==5) { hadFlav=BTagEntry::FLAV_B; nbjets++; }
+	      else nljets++;
+	      std::string btagVar="central";
+	      expEff    = expBtagEff[hadFlav]->Eval(jptForBtag); 
+	      jetBtagSF = btvsfReaders[hadFlav]->eval_auto_bounds( btagVar, hadFlav, jetaForBtag, jptForBtag);
+	      jetBtagSF *= expEff>0 ? expBtagEffPy8[hadFlav]->Eval(jptForBtag)/expBtagEff[hadFlav]->Eval(jptForBtag) : 0.;
 	      
 	      //updated b-tagging decision with the data/MC scale factor
-	      myBTagSFUtil.modifyBTagsWithSF(isBTagged,    jetBtagSF,     expEff);
+	      myBTagSFUtil.modifyBTagsWithSF(isBTagged,      jetBtagSF,      expEff);
 	    }
-
+*/
 	  //save jet
 	  if(isBTagged) bJets.push_back(jp4);
 	  else          lightJets.push_back(jp4);
 	}
-
+/*
       //check if flavour splitting was required
       if(!ev.isData)
 	{
-	  if(flavourSplitting!=FlavourSplitting::NOFLAVOURSPLITTING)
+	  if(flavourSplitting!=SelectionTool::FlavourSplitting::NOFLAVOURSPLITTING)
 	    {
-	      if(flavourSplitting==FlavourSplitting::BSPLITTING)         { if(nbjets==0)    continue; }
-	      else if(flavourSplitting==FlavourSplitting::CSPLITTING)    { if(ncjets==0 || nbjets!=0)    continue; }
-	      else if(flavourSplitting==FlavourSplitting::UDSGSPLITTING) { if(nljets==0 || ncjets!=0 || nbjets!=0) continue; }
+	      if(flavourSplitting==SelectionTool::FlavourSplitting::BSPLITTING)         { if(nbjets==0)    continue; }
+	      else if(flavourSplitting==SelectionTool::FlavourSplitting::CSPLITTING)    { if(ncjets==0 || nbjets!=0)    continue; }
+	      else if(flavourSplitting==SelectionTool::FlavourSplitting::UDSGSPLITTING) { if(nljets==0 || ncjets!=0 || nbjets!=0) continue; }
 	    }
 	}
-
+*/
       //MET and transverse mass
       TLorentzVector met(0,0,0,0);
       met.SetPtEtaPhiM(ev.met_pt[0],0,ev.met_phi[0],0.);
@@ -544,7 +504,7 @@ void RunTop16006(TString filename,
 	  //update lepton selection scale factors, if found
 	  TString prefix("m");
 	  if(lid==11 || lid==1100) prefix="e";
-	  if(lepEffH.find(prefix+"_sel")!=lepEffH.end() && !isZ)
+/*	  if(lepEffH.find(prefix+"_sel")!=lepEffH.end() && !isZ)
 	    {
 	      for(UInt_t il=0; il<TMath::Min((UInt_t)1,(UInt_t)tightLeptonsIso.size()); il++)
 		{
@@ -570,7 +530,7 @@ void RunTop16006(TString filename,
 
 		  lepTriggerSF[0]*=trigSF; lepTriggerSF[1]*=(trigSF-trigSFUnc); lepTriggerSF[2]*=(trigSF+trigSFUnc);
 		}
-	    }
+	    }*/
 
 	  Int_t ntops(0);
 	  float ptsf(1.0);
@@ -590,15 +550,15 @@ void RunTop16006(TString filename,
 	  //update pileup weights, if found
 	  if(puWgtGr.size())
 	    {
-	      puWeight[0]=puWgtGr[0]->Eval(ev.putrue);  
-	      puWeight[1]=puWgtGr[1]->Eval(ev.putrue); 
-	      puWeight[2]=puWgtGr[2]->Eval(ev.putrue);
+	      puWeight[0]=puWgtGr[0]->Eval(ev.g_putrue);  
+	      puWeight[1]=puWgtGr[1]->Eval(ev.g_putrue); 
+	      puWeight[2]=puWgtGr[2]->Eval(ev.g_putrue);
 	    }
 	  
 	  //update nominal event weight
 	  float norm( normH ? normH->GetBinContent(1) : 1.0);
 	  wgt=lepTriggerSF[0]*lepSelSF[0]*puWeight[0]*norm;
-	  if(ev.ttbar_nw>0) wgt*=ev.ttbar_w[0];
+	  if(ev.g_nw>0) wgt*=ev.g_w[0];
 	}
 
       //nominal selection control histograms
@@ -656,7 +616,7 @@ void RunTop16006(TString filename,
 	      allPlots["drlb_"+tag]->Fill(drlb,wgt);		 		 
 	    }	  
 	}
-      
+/*      
       //ANALYSIS WITH SYSTEMATICS
       if(!runSysts) continue;
       
@@ -670,7 +630,7 @@ void RunTop16006(TString filename,
 	    {
 	      for(size_t icat=0; icat<2; icat++)
 		{
-		  float newWgt = wgt*ev.ttbar_w[igen]/ev.ttbar_w[0];
+		  float newWgt = wgt*ev.g_w[igen]/ev.g_w[0];
 		  
 		  //for signal we only consider shapes and acceptance effects as it will be fit
 		  if(isTTbar) 
@@ -743,7 +703,7 @@ void RunTop16006(TString filename,
 		  for (size_t ij=0; ij<resolvedJetIdx.size();ij++)
 		    {
 		      int k(resolvedJetIdx[ij]);
-		      int jflav( abs(ev.j_hadflav[k]) ),jflavForJES( abs(ev.j_flav[k]) );
+		      int jflavForJES( abs(ev.j_flav[k]) );
 		      
 		      //check kinematics
 		      TLorentzVector jp4;
@@ -793,31 +753,27 @@ void RunTop16006(TString filename,
 			{
 			  float jptForBtag(jp4.Pt()>1000. ? 999. : jp4.Pt()), jetaForBtag(fabs(jp4.Eta()));
 			  float expEff(1.0), jetBtagSF(1.0);
-			  if(jflav==4) 
-			    { 
-			      expEff        = expBtagEff["c"]->Eval(jptForBtag); 
-			      int idx(0);
-			      if(varName=="CtagEff") idx=(isign==0 ? 1 : 2);
-			      jetBtagSF  = sfbReaders[idx]->eval( BTagEntry::FLAV_C, jetaForBtag, jptForBtag);
-			      jetBtagSF *= expEff>0 ? expBtagEffPy8["c"]->Eval(jptForBtag)/expBtagEff["c"]->Eval(jptForBtag) : 0.;
+			  BTagEntry::JetFlavor hadFlav=BTagEntry::FLAV_UDSG;
+			  std::string btagVar="central";
+			  if(abs(ev.j_hadflav[k])==4) 
+			    {
+			      hadFlav=BTagEntry::FLAV_C;
+			      if(varName=="CtagEff") btagVar=(isign==0 ? "up" : "down");
 			    }
-			  else if(jflav==5)
-			    { 
-			      expEff=expBtagEff["b"]->Eval(jptForBtag); 
-			      int idx(0);
-			      if(varName=="BtagEff") idx=(isign==0 ? 1 : 2);
-			      jetBtagSF=sfbReaders[idx]->eval( BTagEntry::FLAV_B, jetaForBtag, jptForBtag);
-			      jetBtagSF *= expEff>0 ? expBtagEffPy8["b"]->Eval(jptForBtag)/expBtagEff["b"]->Eval(jptForBtag) : 0.;
+			  else if(abs(ev.j_hadflav[k])==5) 
+			    {
+			      hadFlav=BTagEntry::FLAV_B;
+			      if(varName=="BtagEff") btagVar=(isign==0 ? "up" : "down");
 			    }
 			  else
 			    {
-			      expEff=expBtagEff["udsg"]->Eval(jptForBtag);
-			      int idx(0);
-			      if(varName=="LtagEff") idx=(isign==0 ? 1 : 2);
-			      jetBtagSF=sflReaders[idx]->eval( BTagEntry::FLAV_UDSG, jetaForBtag, jptForBtag);
-			      jetBtagSF *= expEff>0 ? expBtagEffPy8["udsg"]->Eval(jptForBtag)/expBtagEff["udsg"]->Eval(jptForBtag) : 0.;
+			      if(varName=="LtagEff") btagVar=(isign==0 ? "up" : "down");
 			    }
-	      
+
+			  expEff    = expBtagEff[hadFlav]->Eval(jptForBtag); 
+			  jetBtagSF = btvsfReaders[hadFlav]->eval_auto_bounds( btagVar, hadFlav, jetaForBtag, jptForBtag);
+			  jetBtagSF *= expEff>0 ? expBtagEffPy8[hadFlav]->Eval(jptForBtag)/expBtagEff[hadFlav]->Eval(jptForBtag) : 0.;
+			  
 			  //updated b-tagging decision with the data/MC scale factor
 			  myBTagSFUtil.modifyBTagsWithSF(isBTagged,    jetBtagSF,     expEff);
 			}
@@ -867,7 +823,7 @@ void RunTop16006(TString filename,
 		  all2dPlots["nbtagsshapes_"+tag+"_exp"]->Fill(varBJets.size(),2*ivar+isign,newWgt);
 		}
 	    }
-	}
+	}*/
     }
   
   //close input file
@@ -875,7 +831,7 @@ void RunTop16006(TString filename,
 
   //save histos to file  
   TString selPrefix("");  
-  if(flavourSplitting!=NOFLAVOURSPLITTING) selPrefix=Form("%d_",flavourSplitting);
+  if(flavourSplitting!=SelectionTool::FlavourSplitting::NOFLAVOURSPLITTING) selPrefix=Form("%d_",flavourSplitting);
   TString baseName=gSystem->BaseName(outname); 
   TString dirName=gSystem->DirName(outname);
   TFile *fOut=TFile::Open(dirName+"/"+selPrefix+baseName,"RECREATE");
@@ -883,9 +839,9 @@ void RunTop16006(TString filename,
   for (auto& it : allPlots)  { 
     it.second->SetDirectory(fOut); it.second->Write(); 
   }
-  for (auto& it : all2dPlots)  { 
-    it.second->SetDirectory(fOut); it.second->Write(); 
-  }
+//  for (auto& it : all2dPlots)  { 
+//    it.second->SetDirectory(fOut); it.second->Write(); 
+//  }
   fOut->Close();
 }
 
