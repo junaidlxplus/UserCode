@@ -7,7 +7,7 @@ def getEraConfiguration(era,isData):
         }
     jecTags    = {
         'era2016':('Summer16_23Sep2016V4',  'Summer16_23Sep2016AllV4'),
-        'era2017':('Fall17_17Nov2017_V4',   'Fall17_17Nov2017_V4')
+        'era2017':('Fall17_17Nov2017_V6',   'Fall17_17Nov2017BCDEF_V6')
         }
 
     idx=1 if isData else 0
